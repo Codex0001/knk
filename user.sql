@@ -159,6 +159,8 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wishlist ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 
 -- Users can only view & update their own profile
 CREATE POLICY "Users can update their own profile"
@@ -215,3 +217,115 @@ WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Customers can delete their address"
 ON addresses FOR DELETE
 USING (auth.uid() = user_id);
+
+-- Allow customers to insert order items when creating an order
+CREATE POLICY "Customers can insert order items"
+ON order_items FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM orders
+    WHERE orders.id = order_items.order_id
+    AND orders.customer_id = auth.uid()
+  )
+);
+
+-- Allow customers to view their order items
+CREATE POLICY "Customers can view their order items"
+ON order_items FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM orders
+    WHERE orders.id = order_items.order_id
+    AND orders.customer_id = auth.uid()
+  )
+);
+
+-- Allow merchants to view order items for their orders
+CREATE POLICY "Merchants can view their order items"
+ON order_items FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM orders
+    JOIN merchants ON orders.merchant_id = merchants.id
+    WHERE orders.id = order_items.order_id
+    AND merchants.owner_id = auth.uid()
+  )
+);
+
+-- Allow merchants to update order items for their orders
+CREATE POLICY "Merchants can update their order items"
+ON order_items FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM orders
+    JOIN merchants ON orders.merchant_id = merchants.id
+    WHERE orders.id = order_items.order_id
+    AND merchants.owner_id = auth.uid()
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM orders
+    JOIN merchants ON orders.merchant_id = merchants.id
+    WHERE orders.id = order_items.order_id
+    AND merchants.owner_id = auth.uid()
+  )
+);
+
+-- Allow merchants to view their inventory changes
+CREATE POLICY "Merchants can view their inventory"
+ON inventory FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM products
+    JOIN merchants ON products.merchant_id = merchants.id
+    WHERE products.id = inventory.product_id
+    AND merchants.owner_id = auth.uid()
+  )
+);
+
+-- Allow merchants to insert inventory changes
+CREATE POLICY "Merchants can insert inventory changes"
+ON inventory FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM products
+    JOIN merchants ON products.merchant_id = merchants.id
+    WHERE products.id = inventory.product_id
+    AND merchants.owner_id = auth.uid()
+  )
+);
+
+-- Allow merchants to update inventory changes
+CREATE POLICY "Merchants can update inventory changes"
+ON inventory FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM products
+    JOIN merchants ON products.merchant_id = merchants.id
+    WHERE products.id = inventory.product_id
+    AND merchants.owner_id = auth.uid()
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM products
+    JOIN merchants ON products.merchant_id = merchants.id
+    WHERE products.id = inventory.product_id
+    AND merchants.owner_id = auth.uid()
+  )
+);
+
+-- Allow customers to update inventory when placing orders
+CREATE POLICY "Customers can update inventory on order"
+ON inventory FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM order_items
+    JOIN orders ON order_items.order_id = orders.id
+    JOIN products ON order_items.product_id = products.id
+    WHERE products.id = inventory.product_id
+    AND orders.customer_id = auth.uid()
+    AND inventory.reason = 'sale'
+  )
+);
